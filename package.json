@@ -1,7 +1,7 @@
 {
   "name": "@hazbase/smartwallet",
   "version": "0.0.1",
-  "description": "",
+  "description": "A lightweight helper to work with ERC‑4337 Smart Accounts using minimal code",
   "author": "IndieSquare Inc <info@hazbase.com>",
   "keywords": [
     "hazBase",
