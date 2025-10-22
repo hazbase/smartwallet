@@ -1,0 +1,45 @@
+{
+  "name": "@hazbase/smartwallet",
+  "version": "0.0.0",
+  "description": "",
+  "author": "IndieSquare Inc <info@hazbase.com>",
+  "keywords": ["hazBase", "backend", "smartwallet", "account", "abstraction", "erc-4337", "web3", "typescript", "blockchain", "dapps", "evm", "ethereum"],
+  "homepage": "https://lp.hazbase.com/",
+  "repository": "hazbase/smartwallet",
+  "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "ethers": "^6.12.1"
+  },
+  "peerDependencies": {
+    "@hazbase/auth": "^0.0.14"
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build",
+    "clean": "rimraf dist"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ]
+}
