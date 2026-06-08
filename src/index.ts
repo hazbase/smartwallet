@@ -125,6 +125,7 @@ export type SmartWalletConfig = {
 class UserOpBuilder {
   private gas: Partial<Pick<UserOperation,
     "callGasLimit" | "verificationGasLimit" | "preVerificationGas">> = {};
+  private fees: Partial<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }> = {};
 
   constructor(
     private readonly wallet: SmartWallet,
@@ -144,6 +145,21 @@ class UserOpBuilder {
     if (limits.call) this.gas.callGasLimit = limits.call;
     if (limits.verification) this.gas.verificationGasLimit = limits.verification;
     if (limits.preVerification) this.gas.preVerificationGas = limits.preVerification;
+    return this;
+  }
+
+  /**
+   * Override the fee fields signed into this userOp. When omitted, conservative
+   * defaults are used (25 gwei / 2 gwei). Provide live values from
+   * provider.getFeeData() or the bundler's eth_estimateUserOperationGas to avoid
+   * non-includable (too low) or over-draining (too high) operations.
+   * @param fees.maxFeePerGas        maxFeePerGas (wei; bigint)
+   * @param fees.maxPriorityFeePerGas maxPriorityFeePerGas (wei; bigint)
+   * @returns this (fluent)
+   */
+  withFees(fees: Partial<{ maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }>) {
+    if (fees.maxFeePerGas != null) this.fees.maxFeePerGas = fees.maxFeePerGas;
+    if (fees.maxPriorityFeePerGas != null) this.fees.maxPriorityFeePerGas = fees.maxPriorityFeePerGas;
     return this;
   }
 
@@ -176,8 +192,8 @@ class UserOpBuilder {
       callGasLimit: hex(this.gas.callGasLimit ?? 1_500_000n),
       verificationGasLimit: hex(this.gas.verificationGasLimit ?? 1_000_000n),
       preVerificationGas: hex(this.gas.preVerificationGas ?? 100_000n),
-      maxFeePerGas: hex(10n ** 9n * 25n),
-      maxPriorityFeePerGas: hex(10n ** 9n * 2n),
+      maxFeePerGas: hex(this.fees.maxFeePerGas ?? 10n ** 9n * 25n),
+      maxPriorityFeePerGas: hex(this.fees.maxPriorityFeePerGas ?? 10n ** 9n * 2n),
       paymasterAndData: "0x",
       signature: "0x",
     };
@@ -249,10 +265,17 @@ export class SmartWallet {
     if (!provider) throw new Error('Signer must have a provider');
     
     const chainId = Number((await provider.getNetwork()).chainId);
-    factoryAddress = DEFAULT_FACTORY[chainId];
+    // Honor a caller-supplied factory; fall back to the chain default otherwise.
+    factoryAddress = cfg.factory ?? DEFAULT_FACTORY[chainId];
     if (!factoryAddress) throw new Error('sorry your chain not supported yet.');
 
     const bundlerUrl = (cfg.bundlerUrl ?? BASE_BUNDLER_URL) + '/' + chainId
+
+    // Honor a caller-supplied read RPC; fall back to a keyless public default.
+    const providerUrl = cfg.provider ?? DEFAULT_PROVIDER[chainId] ?? '';
+    if (!providerUrl) {
+      throw new Error(`No read RPC available for chain ${chainId}; pass cfg.provider`);
+    }
 
     const mergedCfg = {
       owner: cfg.owner,
@@ -264,7 +287,7 @@ export class SmartWallet {
       middlewares: cfg.usePaymaster ? cfg.middlewares ?? [
         paymasterMiddleware(DEFAULT_PAYMASTER_URL, chainId)
       ] : [],
-      provider: DEFAULT_PROVIDER[chainId] ?? ''
+      provider: providerUrl
     } as const;
 
     const sw = new SmartWallet(mergedCfg);
@@ -459,8 +482,6 @@ export class SmartWallet {
   async send(uo: UserOperation): Promise<Hash> {
     const signed = await this.sign({ ...uo });
 
-    console.log('send', signed)
-
     const hash: Hash = await this.bundler.send("eth_sendUserOperation", [signed, this.cfg.entryPoint]);
     
     const receipt: Log = await this.wait(hash);
@@ -606,7 +627,18 @@ export const paymasterMiddleware = (url: string, chainId: number): Middleware =>
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userOp: uo, chainId }),
     });
-    const resJson = await res.json();
-    uo.paymasterAndData = resJson?.data?.paymasterAndData;
+    if (!res.ok) {
+      throw new Error(`paymaster request failed: ${res.status} ${res.statusText}`);
+    }
+    const resJson = await res.json().catch(() => undefined);
+    const pmd = resJson?.data?.paymasterAndData;
+    // The response is signed into the userOp; validate it before trusting it.
+    // Must be 0x-hex; either "0x" (sponsorship declined → account self-pays) or a
+    // value containing at least a 20-byte paymaster address. Anything else is
+    // malformed/garbage and must not be blindly signed.
+    if (typeof pmd !== "string" || !/^0x([0-9a-fA-F]{2})*$/.test(pmd) || (pmd !== "0x" && (pmd.length - 2) / 2 < 20)) {
+      throw new Error("paymaster returned invalid paymasterAndData");
+    }
+    uo.paymasterAndData = pmd;
   },
 });

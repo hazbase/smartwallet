@@ -32,7 +32,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "ethers": "^6.12.1"
+    "ethers": "^6.16.0"
   },
   "scripts": {
     "build": "tsup",
@@ -51,5 +51,8 @@
     "dist",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "overrides": {
+    "ws": "^8.21.0"
+  }
 }

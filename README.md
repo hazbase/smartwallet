@@ -220,5 +220,24 @@ console.log("included tx:", receipt.transactionHash);
 
 ---
 
+## Security: recommended overrides
+
+`ethers` currently pins a `ws` version with a known advisory, and npm ignores
+`overrides` declared *inside* a dependency. To protect **your own** dependency tree,
+add this to your application's `package.json` and reinstall:
+
+```jsonc
+{
+  "overrides": {
+    "ws": "^8.21.0"
+  }
+}
+```
+
+(yarn: use `resolutions`; pnpm: use `pnpm.overrides`.) Workaround until `ethers`
+ships a fixed `ws` range upstream.
+
+---
+
 ## License
 Apache-2.0
